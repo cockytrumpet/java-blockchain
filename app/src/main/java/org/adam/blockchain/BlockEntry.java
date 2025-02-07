@@ -30,13 +30,7 @@ abstract class BlockEntry {
     }
 
     public Client getSourceClient() {
-        return switch (this) {
-            case Transaction t -> t.sourceClient;
-            case Message m -> m.sourceClient;
-            case MinerCommand c -> c.sourceClient;
-            case SmartContract s -> s.sourceClient;
-            default -> null;
-        };
+        return sourceClient;
     }
 
     public PublicKey publicKey() {
@@ -118,10 +112,14 @@ class Transaction extends BlockEntry {
 /**
  * An entry containing a command to be executed by miners.
  */
-class MinerCommand extends BlockEntry {
+class Command extends Message {
+    public Command(Client chainClient, String text) {
+        super(chainClient, text);
+    }
+
     @Override
     public String toString() {
-        return "";
+        return "<" + text + ">";
     }
 }
 

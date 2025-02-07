@@ -17,7 +17,7 @@ class Miner implements Runnable {
 
     public Miner(MinerEvent event) {
         this.client = event.getClient();
-        this.block = Block.clone(event.getBlock());
+        this.block = event.getBlock();
         block.miner = client;
     }
 
@@ -64,7 +64,11 @@ class Miner implements Runnable {
                     block.timeGenerating = new Date().getTime() - block.timeStamp;
                     block.nonce = guess;
                     block.hash = guessHash;
-                    block.miner.submitBlock(block);
+                    if (block instanceof TerminationBlock) {
+                        block.miner.submitBlock(new TerminationBlock(block));
+                    } else {
+                        block.miner.submitBlock(block);
+                    }
                     isRunning = false;
                 }
             }

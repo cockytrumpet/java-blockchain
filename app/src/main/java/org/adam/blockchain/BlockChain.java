@@ -35,6 +35,7 @@ class BlockChain {
     private final Lock chainLock = new ReentrantLock();
     private final Condition newEntry = chainLock.newCondition();
     private final Condition blockAdded = chainLock.newCondition();
+    private final Condition finalBlockAdded = chainLock.newCondition();
 
     private final long STARTING_BALANCE = 1_000_000L;
     private final long MINER_COMPLETION = 10L;
@@ -42,6 +43,7 @@ class BlockChain {
     private final long MINING_TIME_WINDOW = 3L;
     private final long FEE = 1L;
 
+    private volatile boolean shuttingDown = false;
     private volatile boolean running = true;
     private long feesCollected = 0L;
 
@@ -92,7 +94,7 @@ class BlockChain {
      *
      * @param Client implementing MinerEventListener
      */
-    public void registerMinerEventListener(MinerEventListener listener) {
+    public void registerListener(MinerEventListener listener) {
         synchronized (minerEventListeners) {
             if (!minerEventListeners.contains(listener)) {
                 minerEventListeners.add(listener);
@@ -110,7 +112,7 @@ class BlockChain {
      *
      * @param Client implementing MinerEventListener
      */
-    public void unregisterMinerEventListener(MinerEventListener listener) {
+    public void unregisterListener(MinerEventListener listener) {
         synchronized (minerEventListeners) {
             minerEventListeners.remove(listener);
         }
@@ -128,7 +130,16 @@ class BlockChain {
         newBlock.proofThreshold = calculateThreshold(newBlock);
         newBlock.entryList = getBlockEntries();
         newBlock.miner = null;
-        nextBlock = newBlock;
+
+        boolean finalBlock = newBlock.entryList.stream()
+                .filter(blockEntry -> blockEntry instanceof Command)
+                .map(blockEntry -> (Command) blockEntry)
+                .anyMatch(command -> command.text.equals("SHUTDOWN"));
+
+        if (finalBlock) {
+            System.out.println("BlockChain received shutdown command");
+        }
+        nextBlock = finalBlock ? new TerminationBlock(newBlock) : newBlock;
 
         synchronized (minerEventListeners) {
             Collections.shuffle(minerEventListeners);
@@ -207,17 +218,27 @@ class BlockChain {
      * @param Block that was mined
      * @return boolean result of validity checks
      */
-    public boolean addBlock(Block minedBlock) {
+    public boolean addBlock(Block newBlock) {
         chainLock.lock();
         try {
-            if (isValid(minedBlock)) {
-                Block block = Block.clone(minedBlock);
+            Block block;
+            if (newBlock instanceof TerminationBlock) {
+                block = newBlock;
+            } else {
+                block = Block.clone(newBlock);
+            }
+            if (isValid(block)) {
                 if (block.id == chain.size()) { // next in sequence
                     System.out.println(block);
                     chain.add(block);
                     rewardMiner(block.miner, MINER_COMPLETION);
                     processTransactions(block);
                     updateMiningTimes(block.timeGenerating);
+                    if (block instanceof TerminationBlock) {
+                        running = false;
+                        finalBlockAdded.signalAll();
+                        return true;
+                    }
                     blockAdded.signalAll();
                     return true;
                 } else if (block.id == chain.size() - 1) { // previous block (late submission)
@@ -286,7 +307,8 @@ class BlockChain {
         boolean signaturesValid = block.entryList.stream()
                 .sorted((a, b) -> Integer.compare(a.getId(), b.getId()))
                 .map(blockEntry -> {
-                    builder.append(blockEntry.toString() + Utils.hashFromBytes(blockEntry.getSignature()));
+                    builder.append(blockEntry.toString())
+                            .append(Utils.hashFromBytes(blockEntry.getSignature()));
                     return blockEntry.isValid();
                 })
                 .allMatch(Boolean::booleanValue);
@@ -304,13 +326,21 @@ class BlockChain {
 
     /**
      * Submits BlockEntry for inclusion in a future block.
-     * Checks balance requiremtns.
+     * Checks for Command to events (shutdown)
+     * Checks balance requirements.
      * Applies fees.
      */
     public boolean send(BlockEntry blockEntry) {
         chainLock.lock();
         try {
-            if (blockEntry.isValid()) {
+            if (running && !shuttingDown && blockEntry.isValid()) {
+                if (blockEntry instanceof Command) {
+                    Command command = (Command) blockEntry;
+                    if (command.sourceClient == chainClient) {
+                        // refactor if more commands are added
+                        shuttingDown = command.text.equals("SHUTDOWN");
+                    }
+                }
                 long requiredBalance = blockEntry instanceof Transaction
                         ? ((Transaction) blockEntry).amount + FEE
                         : FEE;
@@ -351,7 +381,10 @@ class BlockChain {
         StringBuilder builder = new StringBuilder();
         for (Map.Entry<Client, Long> entry : balances.entrySet()) {
             if (entry.getKey() != chainClient) {
-                builder.append(entry.getKey().name + "=" + entry.getValue() + "\n");
+                builder.append(entry.getKey().name)
+                        .append("=")
+                        .append(entry.getValue())
+                        .append("\n");
             }
         }
         System.out.println(builder.toString());
@@ -389,28 +422,26 @@ class BlockChain {
     }
 
     /**
-     * Shutdown BlockChain. Send shutdown event to registered miners and await their
-     * unregistration.
+     * Sends shutdown Command to the chain.
+     *
+     * - prevents further entry submissions
      */
     public void shutdown() throws InterruptedException {
         chainLock.lock();
         try {
+            Command command = new Command(chainClient, "SHUTDOWN");
+            send(chainClient.sign(command));
+
+            while (running && !(chain.peekLast() instanceof TerminationBlock)) {
+                finalBlockAdded.await();
+            }
+
             running = false;
-            newEntry.signalAll();
-            blockAdded.signalAll();
+            blockAdded.signalAll(); // Notify any waiting block added observers
+            newEntry.signalAll(); // Notify any waiting entry processors
         } finally {
             chainLock.unlock();
         }
-        blockEntries.clear();
-        synchronized (minerEventListeners) {
-            List<MinerEventListener> listeners = new ArrayList<>(minerEventListeners);
-            MinerEvent event = new MinerEvent(this);
-            for (MinerEventListener listener : listeners) {
-                listener.onMinerEvent(event);
-            }
-        }
-        while (!minerEventListeners.isEmpty()) {
-            Thread.sleep(250);
-        }
+
     }
 }

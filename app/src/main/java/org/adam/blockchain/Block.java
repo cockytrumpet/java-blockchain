@@ -65,11 +65,7 @@ class Block {
         newBlock.timeGenerating = oldBlock.timeGenerating;
         newBlock.hash = oldBlock.hash;
         newBlock.previousHash = oldBlock.previousHash;
-        newBlock.entryList = new ArrayList<>();
-
-        for (BlockEntry entry : oldBlock.entryList) {
-            newBlock.entryList.add(entry);
-        }
+        newBlock.entryList = new ArrayList<>(oldBlock.entryList);
 
         return newBlock;
     }
@@ -83,6 +79,8 @@ class Block {
             messageBuilder.append(entry.toString()).append("\n");
         }
 
+        String minerName = miner != null ? miner.getName() : "null";
+
         toStringBuilder.append("\n" + Utils.ColoredOutput.GREEN)
                 .append("Block: ").append(id).append("             \n")
                 .append("Timestamp: ").append(timeStamp / 1000).append("\n")
@@ -91,11 +89,30 @@ class Block {
                 .append("Nonce: ").append(nonce).append("\n")
                 .append("Proof threshold: ").append(proofThreshold).append("\n")
                 .append("Time mining: ").append(timeGenerating).append("\n")
-                .append("Miner: ").append(miner.getName()).append("\n")
+                .append("Miner: ").append(minerName).append("\n")
                 .append("------------------------------\n")
                 .append(messageBuilder)
                 .append("------------------------------\n" + Utils.ColoredOutput.RESET);
 
         return toStringBuilder.toString();
+    }
+}
+
+/**
+ * A block that signals miners to mine then exit.
+ */
+class TerminationBlock extends Block {
+    public TerminationBlock(Block block) {
+        super();
+        this.proofThreshold = block.proofThreshold;
+        this.lastProofThreshold = block.lastProofThreshold;
+        this.miner = block.miner;
+        this.id = block.id;
+        this.timeStamp = block.timeStamp;
+        this.nonce = block.nonce;
+        this.timeGenerating = block.timeGenerating;
+        this.hash = block.hash;
+        this.previousHash = block.previousHash;
+        this.entryList = new ArrayList<>(block.entryList);
     }
 }

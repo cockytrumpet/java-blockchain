@@ -60,23 +60,23 @@ class MiningClient extends Client implements MinerEventListener {
 
     public MiningClient(String name, BlockChain blockChain) {
         super(name, blockChain);
-        blockChain.registerMinerEventListener(this);
+        blockChain.registerListener(this);
     }
 
     public void stopMiner() {
-        blockChain.unregisterMinerEventListener(this);
+        blockChain.unregisterListener(this);
         isMinerEnabled.set(false);
     }
 
     public void submitBlock(Block minedBlock) {
         blockChain.addBlock(minedBlock);
+        if (minedBlock instanceof TerminationBlock) {
+            stopMiner();
+        }
     }
 
     @Override
     public void onMinerEvent(MinerEvent event) {
-        if (event.shouldTerminate()) {
-            stopMiner();
-        }
         if (isMinerEnabled.get()) {
             Thread thread = new Thread(new Miner(event));
             thread.start();

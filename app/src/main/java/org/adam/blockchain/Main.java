@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Simulates block chain activity to test BlockChain and Client.
+ * Simulates blockchain activity to test BlockChain and Client.
  */
 public class Main {
     public static void main(String[] args) throws InterruptedException {
@@ -25,7 +25,7 @@ public class Main {
 
         Thread.sleep(250);
 
-        /**
+        /*
          * Clients register to receive blocks in need of mining.
          * Currency is obtained only through mining rewards or
          * transfer from another client.
@@ -35,7 +35,7 @@ public class Main {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         long startTime = System.currentTimeMillis();
 
-        while ((System.currentTimeMillis() - startTime) < 10000) {
+        while ((System.currentTimeMillis() - startTime) < 60000) {
             for (MiningClient client : clients) {
                 // maybe send a message
                 if (client.getBalance() >= 1 && random.nextInt(1, 3) == 1) {
@@ -58,8 +58,8 @@ public class Main {
             }
         }
 
-        Thread.sleep(1000);
         blockChain.shutdown();
         blockChain.printSummary();
     }
 }
+// NOTE: check every isValid is needed and implemented
