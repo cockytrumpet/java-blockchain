@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 class BlockChain {
     private final Deque<Long> miningTimes = new ConcurrentLinkedDeque<>();;
     private final List<MinerEventListener> minerEventListeners = new ArrayList<>();
+    private final List<Runnable> smartContractCallBacks = new ArrayList<>();
     private final ConcurrentLinkedDeque<Block> chain = new ConcurrentLinkedDeque<>();
     private final BlockingQueue<BlockEntry> blockEntries = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<Client, Long> balances = new ConcurrentHashMap<>();
@@ -233,6 +234,7 @@ class BlockChain {
                     chain.add(block);
                     rewardMiner(block.miner, MINER_COMPLETION);
                     processTransactions(block);
+                    processSmartContracts(block);
                     updateMiningTimes(block.timeGenerating);
                     if (block instanceof TerminationBlock) {
                         running = false;
@@ -270,6 +272,21 @@ class BlockChain {
         miningTimes.addFirst(latestTime);
         if (miningTimes.size() > MINING_TIME_WINDOW) {
             miningTimes.removeLast();
+        }
+    }
+
+    /**
+     * Takes a Block, registers and executes SmartContracts
+     */
+    private void processSmartContracts(Block block) {
+        block.entryList.stream()
+                .filter(blockEntry -> blockEntry instanceof SmartContract)
+                .map(blockEntry -> (SmartContract) blockEntry)
+                .forEach(smartContract -> {
+                    smartContractCallBacks.add(smartContract.register(this));
+                });
+        for (Runnable callback : smartContractCallBacks) {
+            new Thread(callback).start();
         }
     }
 

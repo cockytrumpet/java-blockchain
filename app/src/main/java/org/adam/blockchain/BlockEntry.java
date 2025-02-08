@@ -2,7 +2,6 @@ package org.adam.blockchain;
 
 import java.security.PublicKey;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 
 /**
  * An entry that can be stored in a block.
@@ -127,32 +126,27 @@ class Command extends Message {
 /**
  * An entry containing a function to be registered with the blockchain.
  *
- * TODO: register function with chain
- * - call register() from processTransactions() to start a client
- * - funds can be sent to SmartContract.getClient()
  */
 class SmartContract extends BlockEntry {
     private final Runnable function;
-    private Client client;
+    private Client smartContractClient;
 
-    public SmartContract(Runnable function) {
-        this.function = function;
+    public SmartContract(Client client, Runnable runnable) {
+        sourceClient = client;
+        function = runnable;
     }
 
     public Client getClient() {
-        return client;
+        return smartContractClient;
     }
 
-    public void register(BlockChain blockChain) {
-        if (client == null) {
-            client = new Client(toString(), blockChain);
-        }
-    }
-
-    public void execute() {
+    public Runnable register(BlockChain blockChain) {
         if (function != null) {
-            function.run();
+            smartContractClient = new Client(toString(), blockChain);
+            return function;
         }
+        return () -> {
+        };
     }
 
     @Override

@@ -62,4 +62,3 @@ public class Main {
         blockChain.printSummary();
     }
 }
-// NOTE: check every isValid is needed and implemented
