@@ -31,13 +31,25 @@ class SmartContractTest {
         }
     }
 
+    class DummyClient extends Client implements SmartContractListener {
+        public DummyClient(String name, BlockChain chain) {
+            super(name, chain);
+            chain.registerSmartContractListener(this);
+        }
+
+        @Override
+        public void onSmartContractEvent(SmartContractEvent event) {
+            triggerSuccess();
+        }
+    }
+
     @Test
     void testExecution() {
         testLock.lock();
         try {
             Thread.sleep(250);
 
-            SmartContract sc = new SmartContract(client, this::triggerSuccess);
+            SmartContract sc = new SmartContract(client, DummyClient::new);
             smartContract = (SmartContract) client.sign(sc);
             chain.send(smartContract);
 

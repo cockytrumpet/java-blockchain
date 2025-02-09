@@ -26,8 +26,8 @@ import java.util.stream.Collectors;
  */
 class BlockChain {
     private final Deque<Long> miningTimes = new ConcurrentLinkedDeque<>();;
-    private final List<MinerEventListener> minerEventListeners = new ArrayList<>();
-    private final List<Runnable> smartContractCallBacks = new ArrayList<>();
+    private final List<MinerListener> minerListeners = new ArrayList<>();
+    private final List<SmartContractListener> smartContractListeners = new ArrayList<>();
     private final ConcurrentLinkedDeque<Block> chain = new ConcurrentLinkedDeque<>();
     private final BlockingQueue<BlockEntry> blockEntries = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<Client, Long> balances = new ConcurrentHashMap<>();
@@ -95,10 +95,10 @@ class BlockChain {
      *
      * @param Client implementing MinerEventListener
      */
-    public void registerListener(MinerEventListener listener) {
-        synchronized (minerEventListeners) {
-            if (!minerEventListeners.contains(listener)) {
-                minerEventListeners.add(listener);
+    public void registerMinerListener(MinerListener listener) {
+        synchronized (minerListeners) {
+            if (!minerListeners.contains(listener)) {
+                minerListeners.add(listener);
                 // if a block was already ready, send it
                 if (nextBlock != null && nextBlock.id == chain.size()) {
                     MinerEvent event = new MinerEvent(this, (MiningClient) listener, nextBlock);
@@ -109,13 +109,37 @@ class BlockChain {
     }
 
     /**
-     * Allows MiningClient to unregister from receiving MinerEvent
+     * Allows MiningClient to unregister from receiving events
      *
      * @param Client implementing MinerEventListener
      */
-    public void unregisterListener(MinerEventListener listener) {
-        synchronized (minerEventListeners) {
-            minerEventListeners.remove(listener);
+    public void unregisterMinerListener(MinerListener listener) {
+        synchronized (minerListeners) {
+            minerListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Allows SmartContractClient to register to receive SmartContractEvent
+     *
+     * @param Client implementing SmartContractListener
+     */
+    public void registerSmartContractListener(SmartContractListener listener) {
+        synchronized (smartContractListeners) {
+            if (!smartContractListeners.contains(listener)) {
+                smartContractListeners.add(listener);
+            }
+        }
+    }
+
+    /**
+     * Allows SmartContractClient to unregister from receiving events
+     *
+     * @param Client implementing SmartContractListener
+     */
+    public void unregisterSmartContractListener(SmartContractListener listener) {
+        synchronized (smartContractListeners) {
+            smartContractListeners.remove(listener);
         }
     }
 
@@ -142,9 +166,9 @@ class BlockChain {
         }
         nextBlock = finalBlock ? new TerminationBlock(newBlock) : newBlock;
 
-        synchronized (minerEventListeners) {
-            Collections.shuffle(minerEventListeners);
-            for (MinerEventListener listener : minerEventListeners) {
+        synchronized (minerListeners) {
+            Collections.shuffle(minerListeners);
+            for (MinerListener listener : minerListeners) {
                 MinerEvent event = new MinerEvent(this, (MiningClient) listener, nextBlock);
                 listener.onMinerEvent(event);
             }
@@ -283,10 +307,13 @@ class BlockChain {
                 .filter(blockEntry -> blockEntry instanceof SmartContract)
                 .map(blockEntry -> (SmartContract) blockEntry)
                 .forEach(smartContract -> {
-                    smartContractCallBacks.add(smartContract.register(this));
+                    smartContractListeners.add(smartContract.register(this));
                 });
-        for (Runnable callback : smartContractCallBacks) {
-            new Thread(callback).start();
+        SmartContractEvent event = new SmartContractEvent(this, block);
+        synchronized (smartContractListeners) {
+            for (SmartContractListener listener : smartContractListeners) {
+                listener.onSmartContractEvent(event);
+            }
         }
     }
 

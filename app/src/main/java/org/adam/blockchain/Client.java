@@ -5,10 +5,18 @@ import java.security.PublicKey;
 import java.util.EventListener;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+interface MinerListener extends EventListener {
+    void onMinerEvent(MinerEvent event);
+}
+
+interface SmartContractListener extends EventListener {
+    void onSmartContractEvent(SmartContractEvent event);
+}
+
 /*
-* A client can sign and submit messages and currency
-* transfers to BlockChain for processing.
-*/
+ * A client can sign and submit messages and currency
+ * transfers to BlockChain for processing.
+ */
 class Client {
     public String name;
     protected BlockChain blockChain;
@@ -47,24 +55,20 @@ class Client {
     }
 }
 
-interface MinerEventListener extends EventListener {
-    void onMinerEvent(MinerEvent event);
-}
-
 /**
  * Client that registers for events containing blocks to be mined.
  * starts a background Miner thread when the event is received.
  */
-class MiningClient extends Client implements MinerEventListener {
+class MiningClient extends Client implements MinerListener {
     private AtomicBoolean isMinerEnabled = new AtomicBoolean(true);
 
     public MiningClient(String name, BlockChain blockChain) {
         super(name, blockChain);
-        blockChain.registerListener(this);
+        blockChain.registerMinerListener(this);
     }
 
     public void stopMiner() {
-        blockChain.unregisterListener(this);
+        blockChain.unregisterMinerListener(this);
         isMinerEnabled.set(false);
     }
 
@@ -82,5 +86,19 @@ class MiningClient extends Client implements MinerEventListener {
             thread.start();
         }
     }
+}
 
+/**
+ * Simple smart contract client.
+ */
+class LotteryClient extends Client implements SmartContractListener {
+    public LotteryClient(String name, BlockChain blockChain) {
+        super(name, blockChain);
+        blockChain.registerSmartContractListener(this);
+    }
+
+    @Override
+    public void onSmartContractEvent(SmartContractEvent event) {
+        // NOTE: how to lottery?
+    }
 }

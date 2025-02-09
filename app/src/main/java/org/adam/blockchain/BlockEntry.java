@@ -2,6 +2,7 @@ package org.adam.blockchain;
 
 import java.security.PublicKey;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 
 /**
  * An entry that can be stored in a block.
@@ -128,25 +129,15 @@ class Command extends Message {
  *
  */
 class SmartContract extends BlockEntry {
-    private final Runnable function;
-    private Client smartContractClient;
+    private BiFunction<String, BlockChain, SmartContractListener> listenerConstructor;
 
-    public SmartContract(Client client, Runnable runnable) {
+    public SmartContract(Client client, BiFunction<String, BlockChain, SmartContractListener> constructor) {
         sourceClient = client;
-        function = runnable;
+        listenerConstructor = constructor;
     }
 
-    public Client getClient() {
-        return smartContractClient;
-    }
-
-    public Runnable register(BlockChain blockChain) {
-        if (function != null) {
-            smartContractClient = new Client(toString(), blockChain);
-            return function;
-        }
-        return () -> {
-        };
+    public SmartContractListener register(BlockChain blockChain) {
+        return listenerConstructor.apply(toString(), blockChain);
     }
 
     @Override
