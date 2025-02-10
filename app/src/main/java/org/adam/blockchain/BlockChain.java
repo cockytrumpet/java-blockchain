@@ -15,14 +15,13 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
- * The BlockChain class implements a blockchain that can store messages or
- * transactions. It supports adding new blocks, validation and dynamically
- * adjusting mining difficulty based on block generation time.
+ * The BlockChain class implements a blockchain that can store messages,
+ * transactions or smart contracts. It supports adding new blocks, validation
+ * and dynamically adjusting mining difficulty based on block generation time.
  *
  * A daemon thread controlls the flow of submitted entries to generated blocks.
  *
- * MiningClient registers to receive events containing the next block to be
- * mined.
+ * MiningClient and SmartContractClient register to receive and process events.
  */
 class BlockChain {
     private final Deque<Long> miningTimes = new ConcurrentLinkedDeque<>();;
@@ -39,10 +38,9 @@ class BlockChain {
     private final Condition finalBlockAdded = chainLock.newCondition();
 
     private final long STARTING_BALANCE = 1_000_000L;
-    private final long MINER_COMPLETION = 10L;
-    private final long MINER_PARTICIPATION = 1L;
+    private final long MINER_REWARD = 10L;
     private final long MINING_TIME_WINDOW = 3L;
-    private final long FEE = 1L;
+    public final long FEE = 1L;
 
     private volatile boolean shuttingDown = false;
     private volatile boolean running = true;
@@ -59,7 +57,7 @@ class BlockChain {
     }
 
     /**
-     * deamon thread to process entries upon signals
+     * Deamon thread to process entries
      */
     private void processEntries() {
         Thread processEntriesThread = new Thread(() -> {
@@ -140,6 +138,16 @@ class BlockChain {
     public void unregisterSmartContractListener(SmartContractListener listener) {
         synchronized (smartContractListeners) {
             smartContractListeners.remove(listener);
+        }
+    }
+
+    public void stopSmartContractListeners() {
+        SmartContractEvent event = new SmartContractEvent(this, new Block());
+        event.isStopping = true;
+        synchronized (smartContractListeners) {
+            for (SmartContractListener listener : smartContractListeners) {
+                listener.onSmartContractEvent(event);
+            }
         }
     }
 
@@ -228,7 +236,9 @@ class BlockChain {
             if (proofThreshold < 0)
                 proofThreshold = 0;
         } else if (average < MIN_TIME) {
-            proofThreshold++;
+            if (proofThreshold < 14) { // for demo, we don't have all day
+                proofThreshold++;
+            }
         }
 
         return proofThreshold;
@@ -236,7 +246,7 @@ class BlockChain {
 
     /**
      * Upon submission of a valid block:
-     * - reward miner (only source of initial supply)
+     * - reward miner (only source of supply)
      * - store and update balances to reflect mined blocks
      * - adjust timing for the next block
      *
@@ -253,29 +263,20 @@ class BlockChain {
                 block = Block.clone(newBlock);
             }
             if (isValid(block)) {
-                if (block.id == chain.size()) { // next in sequence
-                    System.out.println(block);
-                    chain.add(block);
-                    rewardMiner(block.miner, MINER_COMPLETION);
-                    processTransactions(block);
-                    processSmartContracts(block);
-                    updateMiningTimes(block.timeGenerating);
-                    if (block instanceof TerminationBlock) {
-                        running = false;
-                        finalBlockAdded.signalAll();
-                        return true;
-                    }
-                    blockAdded.signalAll();
+                System.out.println(block);
+                chain.add(block);
+                rewardMiner(block.miner, MINER_REWARD);
+                processTransactions(block);
+                processSmartContracts(block);
+                updateMiningTimes(block.timeGenerating);
+                if (block instanceof TerminationBlock) {
+                    running = false;
+                    finalBlockAdded.signalAll();
                     return true;
-                } else if (block.id == chain.size() - 1) { // previous block (late submission)
-                    if (!participationAwards.containsKey(block.miner)) {
-                        rewardMiner(block.miner, MINER_PARTICIPATION);
-                    }
-                    return false;
-                } else { // older block
-                    return false;
                 }
-            } else { // invalid block
+                blockAdded.signalAll();
+                return true;
+            } else {
                 return false;
             }
         } finally {
@@ -283,6 +284,10 @@ class BlockChain {
         }
     }
 
+    /**
+     * @param client that successfully mined the block
+     * @param amount to reward
+     */
     private void rewardMiner(Client client, long amount) {
         participationAwards.put(client, amount);
         balances.merge(client, amount, Long::sum);
@@ -291,6 +296,8 @@ class BlockChain {
 
     /**
      * Keep a simple moving average
+     *
+     * @param latestTime in milliseconds
      */
     private void updateMiningTimes(long latestTime) {
         miningTimes.addFirst(latestTime);
@@ -300,14 +307,26 @@ class BlockChain {
     }
 
     /**
+     * returns list of active smart contracts for testing/demo
+     *
+     * @return List of SmartContractListener
+     */
+    public List<SmartContractListener> getActiveContracts() {
+        // return a copy of smartContractListeners
+        return new ArrayList<>(smartContractListeners);
+    }
+
+    /**
      * Takes a Block, registers and executes SmartContracts
+     *
+     * @param block to process
      */
     private void processSmartContracts(Block block) {
         block.entryList.stream()
                 .filter(blockEntry -> blockEntry instanceof SmartContract)
                 .map(blockEntry -> (SmartContract) blockEntry)
                 .forEach(smartContract -> {
-                    smartContractListeners.add(smartContract.register(this));
+                    smartContractListeners.add(smartContract.register());
                 });
         SmartContractEvent event = new SmartContractEvent(this, block);
         synchronized (smartContractListeners) {
@@ -319,6 +338,8 @@ class BlockChain {
 
     /**
      * Takes a Block and applies all containing Transaction to balances.
+     *
+     * @param block to process
      */
     private void processTransactions(Block block) {
         block.entryList.stream()
@@ -340,6 +361,8 @@ class BlockChain {
     /**
      * Checks validity of Block hash, the previous hash, and the signatures of the
      * BlockEntrys.
+     *
+     * @param block to check
      */
     public boolean isValid(Block block) {
         StringBuilder builder = new StringBuilder();
@@ -365,53 +388,64 @@ class BlockChain {
         boolean lastHashValid = block.id == 0 ? block.previousHash.equals("0")
                 : block.previousHash.equals(chain.descendingIterator().next().hash);
 
-        return hashValid && lastHashValid && signaturesValid;
+        boolean blockStale = block.id != chain.size();
+
+        return hashValid && lastHashValid && signaturesValid && !blockStale;
     }
 
     /**
      * Submits BlockEntry for inclusion in a future block.
-     * Checks for Command to events (shutdown)
-     * Checks balance requirements.
-     * Applies fees.
+     * Checks for shutdown Command
+     * Checks balance requirements
+     * Applies fees
+     *
+     * @param blockEntry
+     * @return boolean result
      */
     public boolean send(BlockEntry blockEntry) {
         chainLock.lock();
         try {
-            if (running && !shuttingDown && blockEntry.isValid()) {
-                if (blockEntry instanceof Command) {
-                    Command command = (Command) blockEntry;
-                    if (command.sourceClient == chainClient) {
-                        // refactor if more commands are added
-                        shuttingDown = command.text.equals("SHUTDOWN");
-                    }
-                }
-                long requiredBalance = blockEntry instanceof Transaction
-                        ? ((Transaction) blockEntry).amount + FEE
-                        : FEE;
-                long balance = balances.getOrDefault(blockEntry.getSourceClient(), 0L);
-                long pendingTransactions = 0;
-
-                for (BlockEntry entry : blockEntries) {
-                    if (entry instanceof Transaction) {
-                        Transaction transaction = (Transaction) entry;
-                        if (transaction.sourceClient == blockEntry.getSourceClient()) {
-                            pendingTransactions -= transaction.amount;
-                        }
-                        if (transaction.destinationClient == blockEntry.getSourceClient()) {
-                            pendingTransactions += transaction.amount;
+            if (running && !shuttingDown || blockEntry.sourceClient instanceof SmartContractListener) {
+                if (blockEntry.isValid()) {
+                    if (blockEntry instanceof Command) {
+                        Command command = (Command) blockEntry;
+                        if (command.sourceClient == chainClient) {
+                            if (command.text.equals("SHUTDOWN")) { // refactor if more commands are added
+                                shuttingDown = true;
+                                stopSmartContractListeners();
+                            }
                         }
                     }
-                }
 
-                if (requiredBalance > balance + pendingTransactions) {
-                    return false;
-                }
+                    long requiredBalance = blockEntry instanceof Transaction
+                            ? ((Transaction) blockEntry).amount + FEE
+                            : FEE;
+                    long balance = balances.getOrDefault(blockEntry.getSourceClient(), 0L);
+                    long pendingTransactions = 0;
 
-                balances.merge(chainClient, FEE, Long::sum);
-                feesCollected += FEE;
-                blockEntries.put(blockEntry);
-                newEntry.signalAll();
-                return true;
+                    for (BlockEntry entry : blockEntries) {
+                        if (entry instanceof Transaction) {
+                            Transaction transaction = (Transaction) entry;
+                            if (transaction.sourceClient == blockEntry.getSourceClient()) {
+                                pendingTransactions -= transaction.amount;
+                            }
+                            if (transaction.destinationClient == blockEntry.getSourceClient()) {
+                                pendingTransactions += transaction.amount;
+                            }
+                        }
+                    }
+
+                    if (requiredBalance > balance + pendingTransactions) {
+                        return false;
+                    }
+
+                    balances.merge(chainClient, FEE, Long::sum);
+                    feesCollected += FEE;
+                    blockEntries.put(blockEntry);
+                    newEntry.signalAll();
+                    return true;
+                }
+                return false;
             }
             return false;
         } catch (InterruptedException e) {
@@ -435,9 +469,11 @@ class BlockChain {
     }
 
     public void printChain() {
+        StringBuilder builder = new StringBuilder();
         for (Block block : chain) {
-            System.out.println(block);
+            builder.append(block);
         }
+        System.out.println(builder.toString());
     }
 
     public void printSummary() {

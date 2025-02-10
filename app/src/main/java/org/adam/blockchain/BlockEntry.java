@@ -11,7 +11,6 @@ abstract class BlockEntry {
     protected static final AtomicInteger nextId = new AtomicInteger(1);
     protected int id;
     protected byte[] signature;
-    protected PublicKey verifyWith;
     protected Client sourceClient;
 
     public BlockEntry() {
@@ -120,7 +119,7 @@ class Command extends Message {
 
     @Override
     public String toString() {
-        return "<" + text + ">";
+        return "BlockChain: " + text;
     }
 }
 
@@ -129,15 +128,15 @@ class Command extends Message {
  *
  */
 class SmartContract extends BlockEntry {
-    private BiFunction<String, BlockChain, SmartContractListener> listenerConstructor;
+    private BiFunction<String, Client, SmartContractListener> listenerConstructor;
 
-    public SmartContract(Client client, BiFunction<String, BlockChain, SmartContractListener> constructor) {
+    public SmartContract(Client client, BiFunction<String, Client, SmartContractListener> constructor) {
         sourceClient = client;
         listenerConstructor = constructor;
     }
 
-    public SmartContractListener register(BlockChain blockChain) {
-        return listenerConstructor.apply(toString(), blockChain);
+    public SmartContractListener register() {
+        return listenerConstructor.apply(toString(), sourceClient);
     }
 
     @Override

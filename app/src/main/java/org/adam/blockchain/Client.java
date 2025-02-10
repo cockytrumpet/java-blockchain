@@ -20,8 +20,8 @@ interface SmartContractListener extends EventListener {
 }
 
 /*
- * A client can sign and submit messages and currency
- * transfers to BlockChain for processing.
+ * A client can sign and submit a message, currency transfer
+ * or smart contract to BlockChain for processing.
  */
 class Client {
     public String name;
@@ -35,7 +35,7 @@ class Client {
     }
 
     public boolean sendMessage(String text) {
-        Message message = new Message(this, "%s: %s".formatted(name, text));
+        Message message = new Message(this, name + ": " + text);
         return blockChain.send(sign(message));
     }
 
@@ -45,7 +45,7 @@ class Client {
     }
 
     public boolean sendSmartContract(
-            BiFunction<String, BlockChain, SmartContractListener> smartContractListenerFactory) {
+            BiFunction<String, Client, SmartContractListener> smartContractListenerFactory) {
         SmartContract smartContract = new SmartContract(this, smartContractListenerFactory);
         return blockChain.send(sign(smartContract));
     }
@@ -101,18 +101,19 @@ class MiningClient extends Client implements MinerListener {
 }
 
 /**
- * Simple smart contract client.
+ * Simple smart contract client demo.
  */
-// NOTE: needs a stop method
-// - send remaining balance to originating client
-// - unregister
 class LotteryClient extends Client implements SmartContractListener {
     private long trigger;
+    private long profit;
     private Set<Client> gamblers;
+    private Client creator;
 
-    public LotteryClient(String name, BlockChain blockChain) {
-        super(name, blockChain);
-        trigger = ThreadLocalRandom.current().nextLong(3L, 11L);
+    public LotteryClient(String name, Client client) {
+        super(name, client.blockChain);
+        creator = client;
+        profit = 0;
+        trigger = ThreadLocalRandom.current().nextLong(4L, 14L);
         gamblers = new HashSet<>();
         blockChain.registerSmartContractListener(this);
     }
@@ -126,15 +127,22 @@ class LotteryClient extends Client implements SmartContractListener {
                 .map(transaction -> transaction.sourceClient)
                 .forEach(gambler -> gamblers.add(gambler));
 
-        long balance = blockChain.getBalance(this);
-
-        if (balance > trigger) {
+        if (getBalance() > trigger) {
             ThreadLocalRandom random = ThreadLocalRandom.current();
             List<Client> clients = new ArrayList<>(gamblers);
             Client winner = clients.get(random.nextInt(clients.size()));
-            sendCurrency(trigger - 2, winner); // trigger - fee - profit
+
+            profit += 1;
+            sendMessage(winner.getName() + " wins!");
+            sendCurrency(trigger - profit - (2 * blockChain.FEE), winner);
+
+            trigger += random.nextLong(4L, 14L);
             gamblers.clear();
-            trigger += random.nextLong(3L, 11L);
+        }
+
+        if (event.isStopping) {
+            sendCurrency(getBalance() - blockChain.FEE, creator);
+            blockChain.unregisterSmartContractListener(this);
         }
     }
 }

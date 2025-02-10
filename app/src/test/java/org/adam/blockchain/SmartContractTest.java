@@ -14,32 +14,27 @@ class SmartContractTest {
     private boolean success = false;
     private BlockChain chain;
     private MiningClient client;
-    private SmartContract smartContract;
 
     public SmartContractTest() {
         chain = new BlockChain();
         client = new MiningClient("client", chain);
     }
 
-    void triggerSuccess() {
-        testLock.lock();
-        try {
-            success = true;
-            hasSuccess.signalAll();
-        } finally {
-            testLock.unlock();
-        }
-    }
-
     class DummyClient extends Client implements SmartContractListener {
-        public DummyClient(String name, BlockChain chain) {
-            super(name, chain);
+        public DummyClient(String name, Client originatingClient) {
+            super(name, originatingClient.blockChain);
             chain.registerSmartContractListener(this);
         }
 
         @Override
         public void onSmartContractEvent(SmartContractEvent event) {
-            triggerSuccess();
+            testLock.lock();
+            try {
+                success = true;
+                hasSuccess.signalAll();
+            } finally {
+                testLock.unlock();
+            }
         }
     }
 
@@ -49,9 +44,7 @@ class SmartContractTest {
         try {
             Thread.sleep(250);
 
-            SmartContract sc = new SmartContract(client, DummyClient::new);
-            smartContract = (SmartContract) client.sign(sc);
-            chain.send(smartContract);
+            client.sendSmartContract(DummyClient::new);
 
             long startTime = System.currentTimeMillis();
             long timeout = 10000;

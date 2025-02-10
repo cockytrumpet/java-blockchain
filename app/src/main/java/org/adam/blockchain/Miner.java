@@ -16,8 +16,8 @@ class Miner implements Runnable {
     private boolean isRunning = true;
 
     public Miner(MinerEvent event) {
-        this.client = event.getClient();
-        this.block = event.getBlock();
+        client = event.getClient();
+        block = event.getBlock();
         block.miner = client;
     }
 
@@ -36,8 +36,8 @@ class Miner implements Runnable {
     @Override
     public void run() {
         if (isRunning) {
-            // was "^0{%d}" but i needed to try to smooth out the jump in difficulty
-            Pattern pattern = Pattern.compile("^[abcdef]{%d}.*".formatted(block.proofThreshold));
+            // NOTE: janky proof of work, first thing to replace if developed further
+            Pattern pattern = Pattern.compile("^[abcdef]{%d}[^abcdef]{1}.*".formatted(block.proofThreshold));
             String guessHash;
             long guess;
 

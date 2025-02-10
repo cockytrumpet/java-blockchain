@@ -19,15 +19,6 @@ public class MinerEvent extends EventObject {
         this.block = block;
     }
 
-    /**
-     * Termination block
-     */
-    public MinerEvent(BlockChain chain) {
-        super(chain);
-        block = null;
-        client = null;
-    }
-
     public Block getBlock() {
         return block;
     }
