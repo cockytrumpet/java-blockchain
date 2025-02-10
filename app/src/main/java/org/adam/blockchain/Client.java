@@ -2,7 +2,12 @@ package org.adam.blockchain;
 
 import java.security.KeyPair;
 import java.security.PublicKey;
+import java.util.ArrayList;
 import java.util.EventListener;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 interface MinerListener extends EventListener {
@@ -91,14 +96,38 @@ class MiningClient extends Client implements MinerListener {
 /**
  * Simple smart contract client.
  */
+// NOTE: needs a stop method
+// - send remaining balance to originating client
+// - unregister
 class LotteryClient extends Client implements SmartContractListener {
+    private long trigger;
+    private Set<Client> gamblers;
+
     public LotteryClient(String name, BlockChain blockChain) {
         super(name, blockChain);
+        trigger = ThreadLocalRandom.current().nextLong(3L, 11L);
+        gamblers = new HashSet<>();
         blockChain.registerSmartContractListener(this);
     }
 
     @Override
     public void onSmartContractEvent(SmartContractEvent event) {
-        // NOTE: how to lottery?
+        event.getBlock().entryList.stream()
+                .filter(blockEntry -> blockEntry instanceof Transaction)
+                .map(blockEntry -> (Transaction) blockEntry)
+                .filter(transaction -> transaction.destinationClient.equals(this))
+                .map(transaction -> transaction.sourceClient)
+                .forEach(gambler -> gamblers.add(gambler));
+
+        long balance = blockChain.getBalance(this);
+
+        if (balance > trigger) {
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            List<Client> clients = new ArrayList<>(gamblers);
+            Client winner = clients.get(random.nextInt(clients.size()));
+            sendCurrency(trigger - 2, winner); // trigger - fee - profit
+            gamblers.clear();
+            trigger += random.nextLong(3L, 11L);
+        }
     }
 }
