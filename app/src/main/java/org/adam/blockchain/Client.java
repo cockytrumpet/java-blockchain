@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 
 interface MinerListener extends EventListener {
     void onMinerEvent(MinerEvent event);
@@ -41,6 +42,12 @@ class Client {
     public boolean sendCurrency(long amount, Client destinationClient) {
         Transaction transaction = new Transaction(this, amount, destinationClient);
         return blockChain.send(sign(transaction));
+    }
+
+    public boolean sendSmartContract(
+            BiFunction<String, BlockChain, SmartContractListener> smartContractListenerFactory) {
+        SmartContract smartContract = new SmartContract(this, smartContractListenerFactory);
+        return blockChain.send(sign(smartContract));
     }
 
     public BlockEntry sign(BlockEntry blockEntry) {
