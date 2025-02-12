@@ -46,7 +46,7 @@ public class Main {
         }).start();
 
         // Flood the chain with submissions for DURATION millis
-        long DURATION = 60000;
+        long DURATION = 60000 * 3;
         Thread.sleep(250);
         long messageCount = 1;
         long startTime = System.currentTimeMillis();

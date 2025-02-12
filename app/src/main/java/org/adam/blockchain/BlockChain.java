@@ -478,7 +478,6 @@ class BlockChain {
         System.out.println(builder.toString());
     }
 
-    // FIX: just accumulate instead of calculate
     public void printSummary() {
         long chainBalance = balances.getOrDefault(chainClient, 0L);
         StringBuilder builder = new StringBuilder();
