@@ -16,7 +16,8 @@ A basic implementation of a blockchain system with message sending, currency tra
 ```bash
 git clone https://github.com/cockytrumpet/java-blockchain.git
 cd java-blockchain
-gradle run
+./gradlew run  # Linux/macOS
+gradlew.bat run  # Windows
 ```
 
 ## Output
