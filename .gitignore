@@ -1,12 +1,14 @@
-# Ignore Gradle project-specific cache directory
-.gradle
+# Gradle build files
+/build/
+.gradle/
 
-# Ignore Gradle build output directory
-build
-app/bin/**
-.idea/**
+# IDE settings (IntelliJ, Eclipse, etc.)
+.idea/
+*.iml
+.vscode/
+
+# OS files
+.DS_Store
+
 *.class
-.settings/**
-app/.settings/**
-gradle**/**
-app/.classpath
+
