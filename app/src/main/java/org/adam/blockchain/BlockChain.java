@@ -45,6 +45,7 @@ class BlockChain {
     private volatile boolean shuttingDown = false;
     private volatile boolean running = true;
     private long feesCollected = 0L;
+    private long rewardsDistributed = 0L;
 
     private final Client chainClient;
     private Block nextBlock;
@@ -289,6 +290,7 @@ class BlockChain {
      * @param amount to reward
      */
     private void rewardMiner(Client client, long amount) {
+        rewardsDistributed += amount;
         participationAwards.put(client, amount);
         balances.merge(client, amount, Long::sum);
         balances.merge(chainClient, -amount, Long::sum);
@@ -476,19 +478,22 @@ class BlockChain {
         System.out.println(builder.toString());
     }
 
+    // FIX: just accumulate instead of calculate
     public void printSummary() {
         long chainBalance = balances.getOrDefault(chainClient, 0L);
         StringBuilder builder = new StringBuilder();
+
         double averageBlockTime = chain.stream()
                 .map(block -> block.timeGenerating)
                 .collect(Collectors.averagingDouble(i -> i));
+
         builder.append("\nAverage block generation time: ").append((int) averageBlockTime)
                 .append("\n")
-                .append("Awards distributed: ").append(-1 * (STARTING_BALANCE - chainBalance - feesCollected))
+                .append("Awards distributed: ").append(rewardsDistributed)
                 .append("\n")
                 .append("Fees collected: ").append(feesCollected)
                 .append("\n")
-                .append("Net change: ").append(STARTING_BALANCE - chainBalance)
+                .append("Net change: ").append(chainBalance - STARTING_BALANCE)
                 .append("\n");
         System.out.println(builder.toString());
     }
