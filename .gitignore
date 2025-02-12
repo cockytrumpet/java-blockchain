@@ -6,11 +6,7 @@ build
 app/bin/**
 .idea/**
 *.class
-Foreman.java
 .settings/**
-*.class
-.settings/**
-.settings**
+app/.settings/**
 gradle**/**
-.project
 app/.classpath
